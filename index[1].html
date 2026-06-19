@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FunnelIQ — Marketing Funnel Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── Design Tokens ─────────────────────────────────────────── */
+  :root {
+    --ink:        #0D0F14;
+    --ink-2:      #3A3F4B;
+    --ink-3:      #7A8090;
+    --canvas:     #F7F8FC;
+    --surface:    #FFFFFF;
+    --border:     #E4E7EF;
+    --accent:     #5B4FE8;
+    --accent-lt:  #EAE8FD;
+    --green:      #1CB87E;
+    --green-lt:   #E2F8F0;
+    --amber:      #F59E0B;
+    --amber-lt:   #FEF3CD;
+    --red:        #EF4444;
+    --red-lt:     #FEE2E2;
+    --mono:       'JetBrains Mono', 'Fira Code', monospace;
+    --sans:       'Inter', system-ui, sans-serif;
+    --shadow-sm:  0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+    --shadow-md:  0 4px 16px rgba(0,0,0,.08);
+    --r:          10px;
+  }
+
+  /* ── Reset ─────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 15px; scroll-behavior: smooth; }
+  body { font-family: var(--sans); background: var(--canvas); color: var(--ink); line-height: 1.6; }
+  a { color: var(--accent); text-decoration: none; }
+  button { cursor: pointer; font-family: inherit; }
+
+  /* ── Layout ────────────────────────────────────────────────── */
+  .shell { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar ───────────────────────────────────────────────── */
+  .sidebar {
+    width: 220px;
+    background: var(--ink);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+    padding: 0 0 24px;
+  }
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    margin-bottom: 8px;
+  }
+  .sidebar-logo .wordmark { font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; }
+  .sidebar-logo .wordmark span { color: var(--accent); }
+  .sidebar-logo .tagline { font-size: .72rem; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .nav-section { padding: 8px 12px 4px; font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.3); }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; margin: 1px 8px;
+    border-radius: 7px; font-size: .85rem; color: rgba(255,255,255,.7);
+    transition: background .15s, color .15s; cursor: pointer;
+  }
+  .nav-item:hover, .nav-item.active { background: rgba(255,255,255,.08); color: #fff; }
+  .nav-item.active { background: var(--accent); color: #fff; }
+  .nav-icon { width: 18px; text-align: center; font-size: 1rem; flex-shrink: 0; }
+  .sidebar-footer { margin-top: auto; padding: 16px 20px 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .7rem; background: var(--accent); color: #fff; }
+
+  /* ── Main ──────────────────────────────────────────────────── */
+  .main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── Topbar ────────────────────────────────────────────────── */
+  .topbar {
+    height: 60px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; position: sticky; top: 0; z-index: 50;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .page-title { font-size: 1rem; font-weight: 600; }
+  .page-sub { font-size: .8rem; color: var(--ink-3); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 7px; font-size: .82rem; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+    transition: background .15s;
+  }
+  .btn:hover { background: var(--canvas); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { background: #4a3fd6; }
+  .date-chip { font-size: .78rem; color: var(--ink-3); background: var(--canvas); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); }
+
+  /* ── Content ───────────────────────────────────────────────── */
+  .content { padding: 28px 32px; flex: 1; }
+
+  /* ── Views ─────────────────────────────────────────────────── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── KPI Cards ─────────────────────────────────────────────── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .kpi-label { font-size: .75rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .kpi-value { font-size: 1.9rem; font-weight: 700; letter-spacing: -.03em; }
+  .kpi-delta { font-size: .78rem; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+  .kpi-delta.up { color: var(--green); }
+  .kpi-delta.down { color: var(--red); }
+
+  /* ── Section header ────────────────────────────────────────── */
+  .section-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-size: 1rem; font-weight: 600; }
+  .section-sub { font-size: .8rem; color: var(--ink-3); }
+
+  /* ── Card ──────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 24px; box-shadow: var(--shadow-sm);
+  }
+  .card-title { font-size: .88rem; font-weight: 600; margin-bottom: 18px; }
+
+  /* ── Two-column grid ────────────────────────────────────────── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+
+  /* ── Funnel Visual ─────────────────────────────────────────── */
+  .funnel-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .funnel-stage {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px; border-radius: 7px;
+    background: var(--canvas); border: 1px solid var(--border);
+    transition: background .15s;
+  }
+  .funnel-stage:hover { background: var(--accent-lt); }
+  .funnel-bar-outer { flex: 1; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+  .funnel-bar-inner { height: 100%; background: var(--accent); border-radius: 5px; transition: width .8s ease; }
+  .funnel-name { width: 110px; font-size: .82rem; font-weight: 500; }
+  .funnel-count { width: 70px; text-align: right; font-family: var(--mono); font-size: .82rem; color: var(--ink-2); }
+  .funnel-rate  { width: 52px; text-align: right; font-size: .75rem; color: var(--ink-3); }
+  .funnel-arrow { text-align: center; color: var(--ink-3); font-size: .75rem; padding: 2px 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .drop-badge { font-size: .72rem; padding: 2px 8px; border-radius: 20px; }
+  .drop-badge.high { background: var(--red-lt); color: var(--red); }
+  .drop-badge.med  { background: var(--amber-lt); color: var(--amber); }
+  .drop-badge.ok   { background: var(--green-lt); color: var(--green); }
+
+  /* ── Channel Table ─────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  th { text-align: left; padding: 10px 12px; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); border-bottom: 2px solid var(--border); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--canvas); }
+  .roi-chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .75rem; font-weight: 500; }
+
+  /* ── Recommendations ───────────────────────────────────────── */
+  .rec-list { display: flex; flex-direction: column; gap: 12px; }
+  .rec-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+    border-left: 4px solid var(--border);
+  }
+  .rec-card.High      { border-left-color: var(--red); }
+  .rec-card.Medium    { border-left-color: var(--amber); }
+  .rec-card.quick-win { border-left-color: var(--green); }
+  .rec-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .priority-pill { font-size: .7rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .priority-pill.High      { background: var(--red-lt); color: var(--red); }
+  .priority-pill.Medium    { background: var(--amber-lt); color: var(--amber); }
+  .priority-pill.quick-win { background: var(--green-lt); color: var(--green); }
+  .rec-stage { font-size: .78rem; color: var(--ink-3); }
+  .rec-issue { font-size: .83rem; color: var(--ink-2); margin-bottom: 6px; }
+  .rec-action { font-size: .83rem; font-weight: 500; }
+  .rec-impact { font-size: .75rem; color: var(--ink-3); margin-top: 4px; }
+
+  /* ── Simulator ─────────────────────────────────────────────── */
+  .simulator { display: flex; flex-direction: column; gap: 16px; }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-label { width: 130px; font-size: .83rem; }
+  .slider-input { flex: 1; accent-color: var(--accent); }
+  .slider-val { width: 52px; text-align: right; font-family: var(--mono); font-size: .8rem; color: var(--ink-2); }
+  .sim-result {
+    background: var(--accent-lt); border: 1px solid #c4bcfa;
+    border-radius: 8px; padding: 16px; margin-top: 8px;
+    display: flex; gap: 24px;
+  }
+  .sim-metric { flex: 1; }
+  .sim-metric .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .sim-metric .lbl { font-size: .75rem; color: var(--ink-3); }
+
+  /* ── Predictor ─────────────────────────────────────────────── */
+  .predictor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .input-group { display: flex; flex-direction: column; gap: 4px; }
+  .input-group label { font-size: .78rem; color: var(--ink-3); }
+  .input-group input, .input-group select {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px;
+    font-family: inherit; font-size: .85rem; background: var(--surface);
+    color: var(--ink); outline: none;
+    transition: border-color .15s;
+  }
+  .input-group input:focus, .input-group select:focus { border-color: var(--accent); }
+  .pred-result {
+    margin-top: 16px; padding: 16px; border-radius: 8px;
+    background: var(--green-lt); border: 1px solid #a7f3d0; display: none;
+  }
+  .pred-result.show { display: block; }
+  .pred-prob { font-size: 2rem; font-weight: 700; color: var(--green); }
+
+  /* ── Loading ───────────────────────────────────────────────── */
+  .loading { color: var(--ink-3); font-size: .85rem; padding: 40px; text-align: center; }
+
+  /* ── Scrollbar ─────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 1100px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Sidebar ───────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="wordmark">Funnel<span>IQ</span></div>
+      <div class="tagline">Marketing Analytics Platform</div>
+    </div>
+
+    <div class="nav-section">Analytics</div>
+    <div class="nav-item active" data-view="overview" onclick="switchView(this)">
+      <span class="nav-icon">📊</span> Overview
+    </div>
+    <div class="nav-item" data-view="channels" onclick="switchView(this)">
+      <span class="nav-icon">📡</span> Channels
+    </div>
+    <div class="nav-item" data-view="trends" onclick="switchView(this)">
+      <span class="nav-icon">📈</span> Trends
+    </div>
+
+    <div class="nav-section">Intelligence</div>
+    <div class="nav-item" data-view="recommendations" onclick="switchView(this)">
+      <span class="nav-icon">💡</span> Recommendations
+    </div>
+    <div class="nav-item" data-view="simulator" onclick="switchView(this)">
+      <span class="nav-icon">🧪</span> Simulator
+    </div>
+    <div class="nav-item" data-view="predictor" onclick="switchView(this)">
+      <span class="nav-icon">🤖</span> ML Predictor
+    </div>
+
+    <div class="sidebar-footer">
+      <div style="font-size:.72rem; color:rgba(255,255,255,.3); line-height:1.6">
+        Data refreshed<br>
+        <span id="refresh-time">—</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Main ──────────────────────────────────────────────── -->
+  <div class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="page-title" id="page-title">Funnel Overview</div>
+          <div class="page-sub" id="page-sub">Full pipeline · Last 30 days</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="date-chip" id="date-chip">Loading…</span>
+        <button class="btn" onclick="loadAllData()">↻ Refresh</button>
+        <button class="btn primary" onclick="exportReport()">⬇ Export</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ── VIEW: Overview ─────────────────────────────────── -->
+      <div class="view active" id="view-overview">
+        <div class="kpi-grid" id="kpi-grid">
+          <div class="loading">Loading KPIs…</div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Conversion Funnel</div>
+            <div class="funnel-wrap" id="funnel-visual">
+              <div class="loading">Building funnel…</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Stage Drop-Off Analysis</div>
+            <canvas id="dropoff-chart" height="280"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Stage Volume Breakdown</div>
+          <canvas id="stage-chart" height="100"></canvas>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Channels ────────────────────────────────── -->
+      <div class="view" id="view-channels">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-title">Channel Performance Comparison</div>
+          <canvas id="channel-bar-chart" height="120"></canvas>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-title">ROI by Channel</div>
+          <canvas id="roi-chart" height="90"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-title">Channel Detail Table</div>
+          <table id="channel-table">
+            <thead>
+              <tr>
+                <th>Channel</th><th>Visitors</th><th>Leads</th>
+                <th>Customers</th><th>Conv Rate</th>
+                <th>CPA ($)</th><th>ROI</th><th>Revenue ($)</th>
+              </tr>
+            </thead>
+            <tbody id="channel-tbody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Trends ───────────────────────────────────── -->
+      <div class="view" id="view-trends">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-title">Daily Visitors, Leads & Customers (30-day)</div>
+          <canvas id="time-chart" height="120"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-title">Rolling 7-Day Conversion Rate</div>
+          <canvas id="rolling-cr-chart" height="100"></canvas>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Recommendations ─────────────────────────── -->
+      <div class="view" id="view-recommendations">
+        <div style="margin-bottom:16px">
+          <div class="section-title">Action Plan</div>
+          <div class="section-sub">Prioritised by conversion impact</div>
+        </div>
+        <div class="rec-list" id="rec-list">
+          <div class="loading">Generating recommendations…</div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: Simulator ───────────────────────────────── -->
+      <div class="view" id="view-simulator">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Improve Stage Conversion Rates</div>
+            <div class="simulator" id="simulator-controls">
+              <div class="loading">Loading…</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Simulation Results</div>
+            <canvas id="sim-chart" height="200"></canvas>
+            <div class="sim-result" id="sim-result" style="margin-top:16px">
+              <div class="sim-metric"><div class="val" id="sim-cust">—</div><div class="lbl">Simulated customers</div></div>
+              <div class="sim-metric"><div class="val" id="sim-lift">—</div><div class="lbl">Customer lift</div></div>
+              <div class="sim-metric"><div class="val" id="sim-rev">—</div><div class="lbl">Est. revenue impact</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VIEW: ML Predictor ────────────────────────────── -->
+      <div class="view" id="view-predictor">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Lead Conversion Predictor</div>
+            <div class="predictor-grid">
+              <div class="input-group">
+                <label>Acquisition Channel</label>
+                <select id="p-channel">
+                  <option>Email</option>
+                  <option>Organic Search</option>
+                  <option>Paid Ads</option>
+                  <option>Social Media</option>
+                  <option>Referral</option>
+                  <option>Direct</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label>Days in Funnel</label>
+                <input type="number" id="p-days" value="21" min="1" max="365" />
+              </div>
+              <div class="input-group">
+                <label>Pages Visited</label>
+                <input type="number" id="p-pages" value="7" min="1" max="50" />
+              </div>
+              <div class="input-group">
+                <label>Email Opens</label>
+                <input type="number" id="p-emails" value="4" min="0" max="30" />
+              </div>
+              <div class="input-group">
+                <label>Form Fills</label>
+                <input type="number" id="p-forms" value="1" min="0" max="10" />
+              </div>
+              <div class="input-group">
+                <label>Demo Booked?</label>
+                <select id="p-demo">
+                  <option value="1">Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label>Budget Score (0–1)</label>
+                <input type="number" id="p-budget" value="0.6" min="0" max="1" step="0.1" />
+              </div>
+            </div>
+            <button class="btn primary" style="margin-top:18px; width:100%;" onclick="runPredictor()">
+              🤖 Predict Conversion Probability
+            </button>
+            <div class="pred-result" id="pred-result">
+              <div class="pred-prob" id="pred-prob">—</div>
+              <div style="font-size:.85rem; color:var(--ink-2); margin-top:4px" id="pred-label">—</div>
+              <div style="font-size:.75rem; color:var(--ink-3); margin-top:8px" id="pred-advice">—</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Budget Optimizer</div>
+            <div id="budget-controls" style="display:flex; flex-direction:column; gap:12px">
+              <div class="loading">Loading…</div>
+            </div>
+            <button class="btn primary" style="margin-top:18px; width:100%;" onclick="runBudgetOptimizer()">
+              💰 Optimize Budget
+            </button>
+            <div class="sim-result" id="budget-result" style="margin-top:16px; display:none">
+              <div class="sim-metric"><div class="val" id="b-cust">—</div><div class="lbl">Predicted customers</div></div>
+              <div class="sim-metric"><div class="val" id="b-roi">—</div><div class="lbl">Predicted ROI</div></div>
+              <div class="sim-metric"><div class="val" id="b-rev">—</div><div class="lbl">Est. revenue</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:20px">
+          <div class="card-title">Model Performance Metrics</div>
+          <div style="display:flex; gap:24px; flex-wrap:wrap;">
+            <div class="kpi-card" style="flex:1; min-width:120px; box-shadow:none; border:1px solid var(--border)">
+              <div class="kpi-label">Accuracy</div><div class="kpi-value" style="font-size:1.4rem">82.5%</div>
+            </div>
+            <div class="kpi-card" style="flex:1; min-width:120px; box-shadow:none; border:1px solid var(--border)">
+              <div class="kpi-label">Precision</div><div class="kpi-value" style="font-size:1.4rem">82.5%</div>
+            </div>
+            <div class="kpi-card" style="flex:1; min-width:120px; box-shadow:none; border:1px solid var(--border)">
+              <div class="kpi-label">Recall</div><div class="kpi-value" style="font-size:1.4rem">100%</div>
+            </div>
+            <div class="kpi-card" style="flex:1; min-width:120px; box-shadow:none; border:1px solid var(--border)">
+              <div class="kpi-label">F1 Score</div><div class="kpi-value" style="font-size:1.4rem">0.904</div>
+            </div>
+            <div class="kpi-card" style="flex:1; min-width:120px; box-shadow:none; border:1px solid var(--border)">
+              <div class="kpi-label">AUC-ROC</div><div class="kpi-value" style="font-size:1.4rem">0.575</div>
+            </div>
+          </div>
+          <div style="font-size:.78rem; color:var(--ink-3); margin-top:16px">
+            Model: Gradient Boosting Classifier · 100 estimators · Trained on 3,200 synthetic lead records · 4,000-sample dataset
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = "http://localhost:5000/api";
+let overviewData = null, channelData = null, timeData = null, recData = null;
+let charts = {};
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+const PAGE_META = {
+  overview:        ["Funnel Overview", "Full pipeline · Last 30 days"],
+  channels:        ["Channel Performance", "ROI, CPA & conversion by source"],
+  trends:          ["Trend Analysis", "30-day rolling metrics"],
+  recommendations: ["Recommendations", "AI-generated action items"],
+  simulator:       ["What-If Simulator", "Model conversion improvements"],
+  predictor:       ["ML Predictor", "Lead scoring & budget optimization"],
+};
+
+function switchView(el) {
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  el.classList.add("active");
+  const v = el.dataset.view;
+  document.getElementById("view-" + v).classList.add("active");
+  const meta = PAGE_META[v] || ["—", ""];
+  document.getElementById("page-title").textContent = meta[0];
+  document.getElementById("page-sub").textContent   = meta[1];
+}
+
+// ── Data Loading ───────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("API error: " + r.status);
+  return r.json();
+}
+
+async function loadAllData() {
+  try {
+    [overviewData, channelData, timeData, recData] = await Promise.all([
+      fetchJSON(API + "/funnel/overview"),
+      fetchJSON(API + "/funnel/channels"),
+      fetchJSON(API + "/funnel/timeseries"),
+      fetchJSON(API + "/funnel/recommendations"),
+    ]);
+    renderOverview();
+    renderChannels();
+    renderTrends();
+    renderRecommendations();
+    renderSimulator();
+    renderBudgetControls();
+    document.getElementById("refresh-time").textContent = new Date().toLocaleTimeString();
+  } catch(e) {
+    // Use demo data when API is offline
+    loadDemoData();
+  }
+}
+
+// ── Demo Data (offline) ────────────────────────────────────────────────────
+function loadDemoData() {
+  const stages = ["Visitors","Leads","MQLs","SQLs","Opportunities","Customers"];
+  const counts  = [28450, 6120, 3560, 1890, 890, 342];
+  const convs = [];
+  for (let i = 1; i < stages.length; i++) {
+    const rate = counts[i]/counts[i-1]*100;
+    convs.push({from: stages[i-1], to: stages[i], rate: +rate.toFixed(2), drop: counts[i-1]-counts[i], drop_pct: +(100-rate).toFixed(2)});
+  }
+  overviewData = {stages, counts, conversions: convs, overall_conversion_rate: 1.202, total_visitors: 28450, total_customers: 342, biggest_dropoff: convs[0]};
+
+  const channels = ["Organic Search","Paid Ads","Social Media","Email","Referral","Direct"];
+  const chCounts = {
+    "Organic Search": [5000,1100,660,363,163,62],
+    "Paid Ads":       [4200,756,393,189,76,23],
+    "Social Media":   [6800,816,367,147,47,10],
+    "Email":          [2100,735,515,335,184,92],
+    "Referral":       [3200,896,582,349,174,78],
+    "Direct":         [7150,1430,830,432,181,63],
+  };
+  channelData = {};
+  channels.forEach(ch => {
+    const c = chCounts[ch];
+    const cost = Math.round(Math.random()*7000+1000);
+    const rev  = c[5] * Math.round(Math.random()*800+300);
+    const convs2 = [];
+    for(let i=1;i<stages.length;i++){
+      const r = c[i]/c[i-1]*100;
+      convs2.push({from:stages[i-1],to:stages[i],rate:+r.toFixed(2),drop:c[i-1]-c[i],drop_pct:+(100-r).toFixed(2)});
+    }
+    const kpis = {cpa: +(cost/c[5]).toFixed(2), roi: +((rev-cost)/cost*100).toFixed(2), ltv: +(rev/c[5]).toFixed(2), conversion_rate: +(c[5]/c[0]*100).toFixed(3)};
+    channelData[ch] = {stages, counts: c, cost, revenue: rev, conversions: convs2, kpis};
+  });
+
+  const ts = [];
+  const base = new Date(); base.setDate(base.getDate()-30);
+  for(let d=0;d<30;d++){
+    const dt = new Date(base); dt.setDate(dt.getDate()+d);
+    ts.push({date: dt.toISOString().slice(0,10), visitors: Math.round(900+Math.random()*200), leads: Math.round(190+Math.random()*60), customers: Math.round(10+Math.random()*6)});
+  }
+  timeData = ts;
+
+  recData = [
+    {priority:"Quick Win", stage:"Channel Mix", drop_pct:0, issue:"Budget not optimally distributed", recommendation:"Increase budget to 'Email' — highest ROI at 340%", impact_estimate:"Estimated 8–12% overall conversion lift"},
+    {priority:"High", stage:"Visitors → Leads", drop_pct:78.5, issue:"Only 21.5% convert from Visitors to Leads", recommendation:"Add exit-intent popups, improve CTA copy, A/B test landing page headlines.", impact_estimate:"+3360 customers if 15% improvement"},
+    {priority:"High", stage:"SQLs → Opportunities", drop_pct:52.9, issue:"Only 47.1% convert from SQLs to Opportunities", recommendation:"Improve SDR response time. Personalize outreach with account context.", impact_estimate:"+142 customers if 15% improvement"},
+    {priority:"Medium", stage:"Leads → MQLs", drop_pct:41.8, issue:"58.2% conversion from Leads to MQLs", recommendation:"Implement lead scoring. Nurture with educational drip campaigns.", impact_estimate:"+256 customers if 10% improvement"},
+    {priority:"Medium", stage:"Opportunities → Customers", drop_pct:61.6, issue:"38.4% conversion from Opportunities to Customers", recommendation:"Offer free trial extension. Address objections with case studies.", impact_estimate:"+82 customers if 10% improvement"},
+  ];
+
+  renderOverview();
+  renderChannels();
+  renderTrends();
+  renderRecommendations();
+  renderSimulator();
+  renderBudgetControls();
+  document.getElementById("refresh-time").textContent = new Date().toLocaleTimeString() + " (demo)";
+}
+
+// ── Render Overview ────────────────────────────────────────────────────────
+function renderOverview() {
+  const d = overviewData;
+  // KPIs
+  const cr = d.overall_conversion_rate.toFixed(2);
+  const totalDrop = d.counts[0] - d.counts[d.counts.length-1];
+  document.getElementById("kpi-grid").innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">Total Visitors</div>
+      <div class="kpi-value">${fmtNum(d.total_visitors)}</div>
+      <div class="kpi-delta up">↑ 12% vs last period</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Customers</div>
+      <div class="kpi-value">${fmtNum(d.total_customers)}</div>
+      <div class="kpi-delta up">↑ 8% vs last period</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Overall Conv Rate</div>
+      <div class="kpi-value">${cr}%</div>
+      <div class="kpi-delta up">↑ 0.3pp vs last period</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Biggest Drop-Off</div>
+      <div class="kpi-value" style="font-size:1.3rem">${d.biggest_dropoff.from}</div>
+      <div class="kpi-delta down">↓ ${d.biggest_dropoff.drop_pct}% lost here</div>
+    </div>
+  `;
+
+  // Funnel visual
+  const maxCount = d.counts[0];
+  const html = d.stages.map((s, i) => {
+    const pct = (d.counts[i] / maxCount * 100).toFixed(1);
+    let dropHTML = "";
+    if (i < d.conversions.length) {
+      const c = d.conversions[i];
+      const cls = c.drop_pct > 50 ? "high" : c.drop_pct > 30 ? "med" : "ok";
+      dropHTML = `<div class="funnel-arrow">↓ <span class="drop-badge ${cls}">${c.drop_pct}% drop to next</span></div>`;
+    }
+    return `
+      <div class="funnel-stage">
+        <div class="funnel-name">${s}</div>
+        <div class="funnel-bar-outer"><div class="funnel-bar-inner" style="width:${pct}%"></div></div>
+        <div class="funnel-count">${fmtNum(d.counts[i])}</div>
+        <div class="funnel-rate">${pct}%</div>
+      </div>
+      ${dropHTML}
+    `;
+  }).join("");
+  document.getElementById("funnel-visual").innerHTML = html;
+
+  // Drop-off donut chart
+  destroyChart("dropoff-chart");
+  const labels = d.conversions.map(c => `${c.from}→${c.to}`);
+  const drops   = d.conversions.map(c => c.drop);
+  charts["dropoff-chart"] = new Chart(document.getElementById("dropoff-chart"), {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{ data: drops, backgroundColor: ["#EF4444","#F59E0B","#5B4FE8","#1CB87E","#8B5CF6"], borderWidth: 2, borderColor: "#fff" }]
+    },
+    options: { plugins: { legend: { position: "bottom", labels: { font: { size: 11 } } } }, cutout: "60%" }
+  });
+
+  // Stage bar chart
+  destroyChart("stage-chart");
+  charts["stage-chart"] = new Chart(document.getElementById("stage-chart"), {
+    type: "bar",
+    data: {
+      labels: d.stages,
+      datasets: [{
+        label: "Count",
+        data: d.counts,
+        backgroundColor: ["#5B4FE8","#7C71F0","#9D94F4","#BEB8F8","#DDD9FC","#EAE8FD"],
+        borderRadius: 6,
+      }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#f0f0f0" } } } }
+  });
+}
+
+// ── Render Channels ────────────────────────────────────────────────────────
+function renderChannels() {
+  const chs = Object.keys(channelData);
+
+  // Bar chart: customers by channel
+  destroyChart("channel-bar-chart");
+  charts["channel-bar-chart"] = new Chart(document.getElementById("channel-bar-chart"), {
+    type: "bar",
+    data: {
+      labels: chs,
+      datasets: [
+        { label: "Visitors", data: chs.map(c => channelData[c].counts[0]), backgroundColor: "#EAE8FD" },
+        { label: "Leads",    data: chs.map(c => channelData[c].counts[1]), backgroundColor: "#9D94F4" },
+        { label: "Customers",data: chs.map(c => channelData[c].counts[5]), backgroundColor: "#5B4FE8" },
+      ]
+    },
+    options: { plugins: { legend: { position: "top" } }, scales: { x: { stacked: false }, y: { grid: { color: "#f0f0f0" } } }, borderRadius: 4 }
+  });
+
+  // ROI horizontal bar
+  destroyChart("roi-chart");
+  const rois = chs.map(c => channelData[c].kpis.roi);
+  charts["roi-chart"] = new Chart(document.getElementById("roi-chart"), {
+    type: "bar",
+    data: {
+      labels: chs,
+      datasets: [{ label: "ROI %", data: rois, backgroundColor: rois.map(r => r > 200 ? "#1CB87E" : r > 100 ? "#F59E0B" : "#EF4444"), borderRadius: 5 }]
+    },
+    options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: { grid: { color: "#f0f0f0" } } } }
+  });
+
+  // Table
+  const tbody = chs.map(ch => {
+    const d = channelData[ch];
+    const k = d.kpis;
+    const roiClass = k.roi > 200 ? "background:#E2F8F0;color:#1CB87E" : k.roi > 100 ? "background:#FEF3CD;color:#F59E0B" : "background:#FEE2E2;color:#EF4444";
+    return `<tr>
+      <td><strong>${ch}</strong></td>
+      <td>${fmtNum(d.counts[0])}</td>
+      <td>${fmtNum(d.counts[1])}</td>
+      <td>${fmtNum(d.counts[5])}</td>
+      <td>${k.conversion_rate}%</td>
+      <td>$${fmtNum(k.cpa)}</td>
+      <td><span class="roi-chip" style="${roiClass}">${k.roi > 0 ? "+" : ""}${k.roi}%</span></td>
+      <td>$${fmtNum(d.revenue)}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("channel-tbody").innerHTML = tbody;
+}
+
+// ── Render Trends ──────────────────────────────────────────────────────────
+function renderTrends() {
+  const dates = timeData.map(t => t.date.slice(5));
+
+  destroyChart("time-chart");
+  charts["time-chart"] = new Chart(document.getElementById("time-chart"), {
+    type: "line",
+    data: {
+      labels: dates,
+      datasets: [
+        { label: "Visitors", data: timeData.map(t => t.visitors), borderColor: "#5B4FE8", backgroundColor: "rgba(91,79,232,.08)", fill: true, tension: .4, pointRadius: 0 },
+        { label: "Leads",    data: timeData.map(t => t.leads),    borderColor: "#1CB87E", backgroundColor: "rgba(28,184,126,.08)", fill: true, tension: .4, pointRadius: 0 },
+        { label: "Customers",data: timeData.map(t => t.customers),borderColor: "#F59E0B", tension: .4, pointRadius: 2 },
+      ]
+    },
+    options: { plugins: { legend: { position: "top" } }, scales: { y: { grid: { color: "#f0f0f0" } } } }
+  });
+
+  // 7-day rolling conversion rate
+  const windowSize = 7;
+  const rolling = [];
+  for (let i = windowSize - 1; i < timeData.length; i++) {
+    const slice = timeData.slice(i - windowSize + 1, i + 1);
+    const totalV = slice.reduce((s, t) => s + t.visitors, 0);
+    const totalC = slice.reduce((s, t) => s + t.customers, 0);
+    rolling.push({ date: timeData[i].date.slice(5), cr: totalV ? +(totalC / totalV * 100).toFixed(3) : 0 });
+  }
+
+  destroyChart("rolling-cr-chart");
+  charts["rolling-cr-chart"] = new Chart(document.getElementById("rolling-cr-chart"), {
+    type: "line",
+    data: {
+      labels: rolling.map(r => r.date),
+      datasets: [{ label: "Conv Rate %", data: rolling.map(r => r.cr), borderColor: "#5B4FE8", fill: false, tension: .4, pointRadius: 2 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + "%" }, grid: { color: "#f0f0f0" } } } }
+  });
+}
+
+// ── Render Recommendations ─────────────────────────────────────────────────
+function renderRecommendations() {
+  const html = recData.map(r => {
+    const cls = r.priority === "Quick Win" ? "quick-win" : r.priority;
+    return `
+      <div class="rec-card ${cls}">
+        <div class="rec-header">
+          <span class="priority-pill ${cls}">${r.priority}</span>
+          <span class="rec-stage">${r.stage}</span>
+          ${r.drop_pct > 0 ? `<span style="margin-left:auto;font-size:.75rem;color:var(--red)">${r.drop_pct}% drop-off</span>` : ""}
+        </div>
+        <div class="rec-issue">${r.issue}</div>
+        <div class="rec-action">→ ${r.recommendation}</div>
+        <div class="rec-impact">📈 ${r.impact_estimate}</div>
+      </div>
+    `;
+  }).join("");
+  document.getElementById("rec-list").innerHTML = html;
+}
+
+// ── Render Simulator ───────────────────────────────────────────────────────
+function renderSimulator() {
+  const convs = overviewData.conversions;
+  const html = convs.map((c, i) => `
+    <div class="slider-row">
+      <div class="slider-label" style="font-size:.78rem">${c.from} → ${c.to}<br><span style="color:var(--ink-3)">${c.rate}% baseline</span></div>
+      <input type="range" class="slider-input" min="0" max="50" value="0" data-idx="${i+1}" oninput="updateSim(this)">
+      <div class="slider-val" id="sim-val-${i}">+0%</div>
+    </div>
+  `).join("");
+  document.getElementById("simulator-controls").innerHTML = html;
+
+  destroyChart("sim-chart");
+  charts["sim-chart"] = new Chart(document.getElementById("sim-chart"), {
+    type: "bar",
+    data: {
+      labels: overviewData.stages,
+      datasets: [
+        { label: "Baseline",   data: overviewData.counts, backgroundColor: "rgba(91,79,232,.2)", borderColor: "#5B4FE8", borderWidth: 1 },
+        { label: "Simulated",  data: overviewData.counts.slice(), backgroundColor: "rgba(28,184,126,.25)", borderColor: "#1CB87E", borderWidth: 1 },
+      ]
+    },
+    options: { plugins: { legend: { position: "top" } }, scales: { y: { grid: { color: "#f0f0f0" } } }, borderRadius: 4 }
+  });
+}
+
+function updateSim(el) {
+  const idx = el.dataset.idx;
+  const pct = parseInt(el.value);
+  document.getElementById("sim-val-" + (idx-1)).textContent = "+" + pct + "%";
+  runSimulation();
+}
+
+function runSimulation() {
+  const improvements = {};
+  document.querySelectorAll("[data-idx]").forEach(el => {
+    if (el.value > 0) improvements[el.dataset.idx] = parseInt(el.value);
+  });
+
+  // Client-side sim
+  const counts = overviewData.counts.slice();
+  const base   = overviewData.conversions;
+  for (const [idxStr, pct] of Object.entries(improvements)) {
+    const idx = parseInt(idxStr);
+    counts[idx] = Math.min(counts[idx-1], Math.round(counts[idx] * (1 + pct/100)));
+    for (let j = idx+1; j < counts.length; j++) {
+      const ratio = overviewData.counts[j] / overviewData.counts[j-1];
+      counts[j] = Math.round(counts[j-1] * ratio);
+    }
+  }
+
+  const lift = counts[counts.length-1] - overviewData.total_customers;
+  document.getElementById("sim-cust").textContent = fmtNum(counts[counts.length-1]);
+  document.getElementById("sim-lift").textContent = (lift >= 0 ? "+" : "") + fmtNum(lift);
+  document.getElementById("sim-rev").textContent = "$" + fmtNum(lift * 650);
+
+  if (charts["sim-chart"]) {
+    charts["sim-chart"].data.datasets[1].data = counts;
+    charts["sim-chart"].update();
+  }
+}
+
+// ── Budget Controls ────────────────────────────────────────────────────────
+function renderBudgetControls() {
+  const channels = Object.keys(channelData);
+  const html = channels.map(ch => `
+    <div class="slider-row">
+      <div class="slider-label" style="font-size:.78rem">${ch}</div>
+      <input type="range" class="slider-input" min="0" max="10000" step="100" value="${channelData[ch].cost}" data-ch="${ch}">
+      <div class="slider-val" style="width:70px" id="bc-val-${ch.replace(/\s/g,'_')}">$${fmtNum(channelData[ch].cost)}</div>
+    </div>
+  `).join("");
+  document.getElementById("budget-controls").innerHTML = html;
+
+  document.querySelectorAll("[data-ch]").forEach(el => {
+    el.addEventListener("input", () => {
+      document.getElementById("bc-val-" + el.dataset.ch.replace(/\s/g,"_")).textContent = "$" + fmtNum(el.value);
+    });
+  });
+}
+
+function runBudgetOptimizer() {
+  const budgets = {};
+  document.querySelectorAll("[data-ch]").forEach(el => {
+    budgets[el.dataset.ch] = parseInt(el.value);
+  });
+
+  let predicted = 0;
+  const breakdown = {};
+  for (const [ch, budget] of Object.entries(budgets)) {
+    const cpa = channelData[ch].kpis.cpa || 100;
+    const cust = Math.round(budget / cpa);
+    predicted += cust;
+    breakdown[ch] = cust;
+  }
+  const total = Object.values(budgets).reduce((a,b) => a+b, 0);
+  const roi = total > 0 ? +((predicted * 650 - total) / total * 100).toFixed(1) : 0;
+
+  document.getElementById("b-cust").textContent = fmtNum(predicted);
+  document.getElementById("b-roi").textContent = roi + "%";
+  document.getElementById("b-rev").textContent = "$" + fmtNum(predicted * 650);
+  document.getElementById("budget-result").style.display = "flex";
+}
+
+// ── ML Predictor (client-side model proxy) ────────────────────────────────
+const CH_IDX = {"Organic Search":0,"Paid Ads":1,"Social Media":2,"Email":3,"Referral":4,"Direct":5};
+const CH_BASE_CR = {"Organic Search":0.38,"Paid Ads":0.30,"Social Media":0.22,"Email":0.50,"Referral":0.45,"Direct":0.35};
+
+function runPredictor() {
+  const ch          = document.getElementById("p-channel").value;
+  const days        = parseInt(document.getElementById("p-days").value);
+  const pages       = parseInt(document.getElementById("p-pages").value);
+  const emails      = parseInt(document.getElementById("p-emails").value);
+  const forms       = parseInt(document.getElementById("p-forms").value);
+  const demo        = parseInt(document.getElementById("p-demo").value);
+  const budget      = parseFloat(document.getElementById("p-budget").value);
+
+  const base = CH_BASE_CR[ch] || 0.30;
+  const engagement = (
+    0.05 * Math.min(pages / 10, 1) +
+    0.10 * Math.min(emails / 5, 1) +
+    0.15 * Math.min(forms, 1) +
+    0.20 * demo +
+    0.10 * budget
+  );
+  const decay = Math.max(1 - days / 180, 0.5);
+  const prob  = Math.min(Math.max(base + engagement * decay, 0.05), 0.97);
+
+  const pct = (prob * 100).toFixed(1);
+  const label = prob >= 0.6 ? "🟢 High likelihood to convert" : prob >= 0.35 ? "🟡 Moderate — needs nurturing" : "🔴 Low — at risk of churn";
+  const advice = prob >= 0.6
+    ? "Prioritize this lead. Assign to senior SDR and offer demo."
+    : prob >= 0.35
+    ? "Enroll in email nurture sequence. Share relevant case studies."
+    : "Re-engage with a targeted offer. Consider value reassessment.";
+
+  document.getElementById("pred-prob").textContent = pct + "%";
+  document.getElementById("pred-label").textContent = label;
+  document.getElementById("pred-advice").textContent = advice;
+  document.getElementById("pred-result").classList.add("show");
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+function exportReport() {
+  if (!overviewData) return;
+  const d = overviewData;
+  let csv = "Stage,Count,Conversion Rate to Next\n";
+  d.stages.forEach((s, i) => {
+    const cr = d.conversions[i] ? d.conversions[i].rate + "%" : "—";
+    csv += `${s},${d.counts[i]},${cr}\n`;
+  });
+  csv += "\n\nChannel,Visitors,Leads,Customers,CPA,ROI\n";
+  Object.entries(channelData).forEach(([ch, v]) => {
+    csv += `${ch},${v.counts[0]},${v.counts[1]},${v.counts[5]},${v.kpis.cpa},${v.kpis.roi}%\n`;
+  });
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "funnel-report.csv";
+  a.click();
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  return Number(n).toLocaleString();
+}
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.getElementById("date-chip").textContent = new Date().toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
+loadAllData();
+</script>
+</body>
+</html>
